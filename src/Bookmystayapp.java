@@ -1,4 +1,56 @@
 import java.util.HashMap;
+import java.util.Queue;
+import java.util.LinkedList;
+
+class Reservation {
+
+    private String guestName;
+    private String roomType;
+
+    public Reservation(String guestName, String roomType) {
+        this.guestName = guestName;
+        this.roomType = roomType;
+    }
+
+    public String getGuestName() {
+        return guestName;
+    }
+
+    public String getRoomType() {
+        return roomType;
+    }
+
+    public void displayReservation() {
+        System.out.println("Guest: " + guestName + " | Requested Room: " + roomType);
+    }
+}
+
+class BookingRequestQueue {
+
+    private Queue<Reservation> requestQueue;
+
+    public BookingRequestQueue() {
+        requestQueue = new LinkedList<>();
+    }
+
+    public void addRequest(Reservation reservation) {
+        requestQueue.add(reservation);
+        System.out.println("Booking request added for " + reservation.getGuestName());
+    }
+
+    public void displayQueue() {
+        System.out.println("\nCurrent Booking Request Queue:");
+
+        if (requestQueue.isEmpty()) {
+            System.out.println("No booking requests.");
+            return;
+        }
+
+        for (Reservation r : requestQueue) {
+            r.displayReservation();
+        }
+    }
+}
 abstract class Room {
     protected String roomType;
     protected int beds;
@@ -148,7 +200,17 @@ public class Bookmystayapp {
         RoomSearchService searchService = new RoomSearchService(inventory);
 
         searchService.searchRooms(rooms);
+        BookingRequestQueue bookingQueue = new BookingRequestQueue();
 
+        Reservation r1 = new Reservation("Michael Robinavitch", "Single Room");
+        Reservation r2 = new Reservation("Trinity Santos", "Double Room");
+        Reservation r3 = new Reservation("Samira Mohan", "Suite Room");
+
+        bookingQueue.addRequest(r1);
+        bookingQueue.addRequest(r2);
+        bookingQueue.addRequest(r3);
+
+        bookingQueue.displayQueue();
         System.out.println("Application executed successfully.");
     }
 }
