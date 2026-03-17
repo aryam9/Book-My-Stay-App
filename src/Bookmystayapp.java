@@ -5,10 +5,58 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Stack;
 class InvalidBookingException extends Exception {
 
     public InvalidBookingException(String message) {
         super(message);
+    }
+}
+class CancellationService {
+
+    private Stack<String> rollbackStack;
+    private RoomInventory inventory;
+    private Set<String> allocatedRoomIds;
+
+    public CancellationService(RoomInventory inventory, Set<String> allocatedRoomIds) {
+        this.inventory = inventory;
+        this.allocatedRoomIds = allocatedRoomIds;
+        rollbackStack = new Stack<>();
+    }
+
+    public void cancelBooking(String roomId, String roomType) {
+
+        System.out.println("\nCancellation Request for Room ID: " + roomId);
+
+        if (!allocatedRoomIds.contains(roomId)) {
+            System.out.println("Cancellation Failed: Reservation does not exist.");
+            return;
+        }
+
+        rollbackStack.push(roomId);
+
+        allocatedRoomIds.remove(roomId);
+
+        int current = inventory.getAvailability(roomType);
+        inventory.updateAvailability(roomType, current + 1);
+
+        System.out.println("Booking cancelled successfully.");
+        System.out.println("Room ID released: " + roomId);
+        System.out.println("Inventory restored for " + roomType);
+    }
+
+    public void displayRollbackHistory() {
+
+        System.out.println("\nRollback Stack (Recently Cancelled Rooms):");
+
+        if (rollbackStack.isEmpty()) {
+            System.out.println("No cancellations recorded.");
+            return;
+        }
+
+        for (String id : rollbackStack) {
+            System.out.println(id);
+        }
     }
 }
 class Reservation {
@@ -222,6 +270,9 @@ class RoomAllocationService {
                 System.out.println("Request skipped.\n");
             }
         }
+    }
+    public Set<String> getAllocatedRoomIds() {
+        return allocatedRoomIds;
     }
 }
 class AddOnService {
@@ -479,6 +530,12 @@ public class Bookmystayapp {
         bookingQueue.addRequest(r4);
         System.out.println("\nProcessing Invalid Booking Test:");
         allocator.processBookings(bookingQueue);
+        CancellationService cancellationService =
+                new CancellationService(inventory, allocator.getAllocatedRoomIds());
+        String cancelRoomId = allocator.getAllocatedRoomIds().iterator().next();
+        cancellationService.cancelBooking(cancelRoomId, "Single Room");
+        cancellationService.displayRollbackHistory();
+        inventory.displayInventory();
         System.out.println("Application executed successfully.");
     }
 }
