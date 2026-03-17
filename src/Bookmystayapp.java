@@ -293,6 +293,66 @@ class AddOnServiceManager {
         }
     }
 }
+class BookingHistory {
+
+    private List<Reservation> confirmedBookings;
+
+    public BookingHistory() {
+        confirmedBookings = new ArrayList<>();
+    }
+
+    public void addBooking(Reservation reservation) {
+        confirmedBookings.add(reservation);
+    }
+
+    public List<Reservation> getBookings() {
+        return confirmedBookings;
+    }
+
+    public void displayHistory() {
+
+        System.out.println("\nBooking History:");
+
+        if (confirmedBookings.isEmpty()) {
+            System.out.println("No confirmed bookings.");
+            return;
+        }
+
+        for (Reservation r : confirmedBookings) {
+            r.displayReservation();
+        }
+    }
+}
+class BookingReportService {
+
+    public void generateReport(List<Reservation> bookings) {
+
+        System.out.println("\n=== Booking Summary Report ===");
+
+        if (bookings.isEmpty()) {
+            System.out.println("No booking data available.");
+            return;
+        }
+
+        HashMap<String, Integer> roomTypeCount = new HashMap<>();
+
+        for (Reservation r : bookings) {
+
+            String roomType = r.getRoomType();
+
+            roomTypeCount.put(
+                    roomType,
+                    roomTypeCount.getOrDefault(roomType, 0) + 1
+            );
+        }
+
+        for (String type : roomTypeCount.keySet()) {
+            System.out.println(type + " Bookings: " + roomTypeCount.get(type));
+        }
+
+        System.out.println("Total Bookings: " + bookings.size());
+    }
+}
 public class Bookmystayapp {
 
     public static void main(String[] args) {
@@ -379,6 +439,17 @@ public class Bookmystayapp {
         double totalServiceCost = serviceManager.calculateTotalServiceCost(reservationId);
 
         System.out.println("Total Add-On Cost: ₹" + totalServiceCost);
+        BookingHistory history = new BookingHistory();
+
+        history.addBooking(r1);
+        history.addBooking(r2);
+        history.addBooking(r3);
+
+        history.displayHistory();
+
+        BookingReportService reportService = new BookingReportService();
+
+        reportService.generateReport(history.getBookings());
         System.out.println("Application executed successfully.");
     }
 }
