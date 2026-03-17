@@ -6,6 +6,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Stack;
+import java.util.*;
+import java.util.concurrent.locks.*;
 class InvalidBookingException extends Exception {
 
     public InvalidBookingException(String message) {
@@ -213,7 +215,7 @@ class RoomSearchService {
 }
 class RoomAllocationService {
 
-    private RoomInventory inventory;
+    protected RoomInventory inventory;
     private Set<String> allocatedRoomIds;
     private HashMap<String, Set<String>> roomTypeAllocations;
 
@@ -223,7 +225,7 @@ class RoomAllocationService {
         roomTypeAllocations = new HashMap<>();
     }
 
-    private String generateRoomId(String roomType) {
+    protected String generateRoomId(String roomType) {
 
         String prefix = "";
 
@@ -428,6 +430,71 @@ class InvalidBookingValidator {
         }
     }
 }
+class ThreadSafeBookingQueue {
+    private final Queue<Reservation> queue = new LinkedList<>();
+
+    public synchronized void addRequest(Reservation r) {
+        queue.add(r);
+        System.out.println("Booking request added for " + r.getGuestName());
+    }
+
+    public synchronized Reservation getNextRequest() {
+        return queue.poll();
+    }
+
+    public synchronized boolean isEmpty() {
+        return queue.isEmpty();
+    }
+}
+class ThreadSafeRoomAllocationService extends RoomAllocationService {
+
+    private final Lock lock = new ReentrantLock();
+
+    public ThreadSafeRoomAllocationService(RoomInventory inventory) {
+        super(inventory);
+    }
+
+    public void processBooking(Reservation reservation) {
+        lock.lock();
+        try {
+            InvalidBookingValidator.validateReservation(reservation, super.inventory);
+            String roomType = reservation.getRoomType();
+            String roomId = super.generateRoomId(roomType);
+            super.getAllocatedRoomIds().add(roomId);
+            super.inventory.decrementRoom(roomType);
+            System.out.println("Reservation Confirmed! Guest: " + reservation.getGuestName() +
+                    " | Room ID: " + roomId);
+        } catch (InvalidBookingException e) {
+            System.out.println("Booking Failed for " + reservation.getGuestName() + ": " + e.getMessage());
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+
+class BookingProcessorThread extends Thread {
+    private ThreadSafeBookingQueue queue;
+    private ThreadSafeRoomAllocationService allocator;
+
+    public BookingProcessorThread(ThreadSafeBookingQueue queue, ThreadSafeRoomAllocationService allocator) {
+        this.queue = queue;
+        this.allocator = allocator;
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            Reservation r;
+            synchronized (queue) {
+                if (queue.isEmpty()) break;
+                r = queue.getNextRequest();
+            }
+            if (r != null) {
+                allocator.processBooking(r);
+            }
+        }
+    }
+}
 public class Bookmystayapp {
 
     public static void main(String[] args) {
@@ -437,55 +504,15 @@ public class Bookmystayapp {
         System.out.println("     Hotel Booking System v1.0       ");
         System.out.println("=====================================");
 
-        System.out.println("Application started successfully.");
-
-        int singleRoomAvailability = 10;
-        int doubleRoomAvailability = 6;
-        int suiteRoomAvailability = 3;
-
-        Room single = new SingleRoom();
-        Room doubleRoom = new DoubleRoom();
-        Room suite = new SuiteRoom();
-
-        System.out.println("----- Single Room Details -----");
-        single.displayRoomDetails();
-        System.out.println("Available Rooms: " + singleRoomAvailability);
-        System.out.println();
-
-        System.out.println("----- Double Room Details -----");
-        doubleRoom.displayRoomDetails();
-        System.out.println("Available Rooms: " + doubleRoomAvailability);
-        System.out.println();
-
-        System.out.println("----- Suite Room Details -----");
-        suite.displayRoomDetails();
-        System.out.println("Available Rooms: " + suiteRoomAvailability);
-        System.out.println();
-
         RoomInventory inventory = new RoomInventory();
 
         inventory.displayInventory();
 
-        System.out.println("\nChecking availability for Double Room:");
-        System.out.println("Available: " + inventory.getAvailability("Double Room"));
-
-        System.out.println("\nUpdating availability for Suite Room...");
-        inventory.updateAvailability("Suite Room", 5);
-
-        System.out.println("\nUpdated Inventory:");
-        inventory.displayInventory();
-
-        Room[] rooms = {
-                new SingleRoom(),
-                new DoubleRoom(),
-                new SuiteRoom()
-        };
-
+        Room[] rooms = {new SingleRoom(), new DoubleRoom(), new SuiteRoom()};
         RoomSearchService searchService = new RoomSearchService(inventory);
-
         searchService.searchRooms(rooms);
-        BookingRequestQueue bookingQueue = new BookingRequestQueue();
 
+        BookingRequestQueue bookingQueue = new BookingRequestQueue();
         Reservation r1 = new Reservation("Michael Robinavitch", "Single Room");
         Reservation r2 = new Reservation("Trinity Santos", "Double Room");
         Reservation r3 = new Reservation("Samira Mohan", "Suite Room");
@@ -494,48 +521,71 @@ public class Bookmystayapp {
         bookingQueue.addRequest(r2);
         bookingQueue.addRequest(r3);
 
-        bookingQueue.displayQueue();
         RoomAllocationService allocator = new RoomAllocationService(inventory);
         allocator.processBookings(bookingQueue);
+
         AddOnServiceManager serviceManager = new AddOnServiceManager();
-
-        AddOnService breakfast = new AddOnService("Breakfast", 500);
-        AddOnService airportPickup = new AddOnService("Airport Pickup", 1200);
-        AddOnService spa = new AddOnService("Spa Access", 2000);
-
         String reservationId = "SR101";
-
-        serviceManager.addService(reservationId, breakfast);
-        serviceManager.addService(reservationId, airportPickup);
-        serviceManager.addService(reservationId, spa);
-
+        serviceManager.addService(reservationId, new AddOnService("Breakfast", 500));
+        serviceManager.addService(reservationId, new AddOnService("Airport Pickup", 1200));
+        serviceManager.addService(reservationId, new AddOnService("Spa Access", 2000));
         serviceManager.displayServices(reservationId);
 
-        double totalServiceCost = serviceManager.calculateTotalServiceCost(reservationId);
-
-        System.out.println("Total Add-On Cost: ₹" + totalServiceCost);
         BookingHistory history = new BookingHistory();
-
         history.addBooking(r1);
         history.addBooking(r2);
         history.addBooking(r3);
-
         history.displayHistory();
 
         BookingReportService reportService = new BookingReportService();
+        reportService.generateReport(history.getBookings());
 
-        reportService.generateReport(history.getBookings());
-        reportService.generateReport(history.getBookings());
         Reservation r4 = new Reservation("", "Luxury Room");
         bookingQueue.addRequest(r4);
-        System.out.println("\nProcessing Invalid Booking Test:");
         allocator.processBookings(bookingQueue);
+
         CancellationService cancellationService =
                 new CancellationService(inventory, allocator.getAllocatedRoomIds());
         String cancelRoomId = allocator.getAllocatedRoomIds().iterator().next();
         cancellationService.cancelBooking(cancelRoomId, "Single Room");
         cancellationService.displayRollbackHistory();
         inventory.displayInventory();
-        System.out.println("Application executed successfully.");
+
+        System.out.println("\n=== Concurrent Booking Simulation ===");
+        ThreadSafeBookingQueue concurrentQueue = new ThreadSafeBookingQueue();
+        ThreadSafeRoomAllocationService threadSafeAllocator = new ThreadSafeRoomAllocationService(inventory);
+
+        Reservation[] concurrentReservations = {
+                new Reservation("Alice", "Single Room"),
+                new Reservation("Bob", "Double Room"),
+                new Reservation("Charlie", "Suite Room"),
+                new Reservation("David", "Single Room"),
+                new Reservation("Eve", "Double Room"),
+                new Reservation("Frank", "Suite Room"),
+                new Reservation("Grace", "Single Room"),
+                new Reservation("Hannah", "Double Room")
+        };
+
+        for (Reservation r : concurrentReservations) {
+            concurrentQueue.addRequest(r);
+        }
+
+        int threadCount = 3;
+        Thread[] threads = new Thread[threadCount];
+        for (int i = 0; i < threadCount; i++) {
+            threads[i] = new BookingProcessorThread(concurrentQueue, threadSafeAllocator);
+            threads[i].start();
+        }
+
+        for (Thread t : threads) {
+            try { t.join(); } catch (InterruptedException e) { e.printStackTrace(); }
+        }
+
+        System.out.println("\nAll concurrent booking requests processed.");
+        System.out.println("Final Inventory:");
+        inventory.displayInventory();
+        System.out.println("Allocated Rooms: " + threadSafeAllocator.getAllocatedRoomIds().size());
+
+        System.out.println("\nApplication executed successfully.");
     }
 }
