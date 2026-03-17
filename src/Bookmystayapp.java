@@ -5,6 +5,12 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
+class InvalidBookingException extends Exception {
+
+    public InvalidBookingException(String message) {
+        super(message);
+    }
+}
 class Reservation {
 
     private String guestName;
@@ -197,29 +203,24 @@ class RoomAllocationService {
         while (!queue.isEmpty()) {
 
             Reservation reservation = queue.getNextRequest();
-            String roomType = reservation.getRoomType();
 
-            int available = inventory.getAvailability(roomType);
-
-            if (available <= 0) {
-                System.out.println("No rooms available for " + roomType);
-                continue;
+            try {
+                InvalidBookingValidator.validateReservation(reservation, inventory);
+                String roomType = reservation.getRoomType();
+                String roomId = generateRoomId(roomType);
+                allocatedRoomIds.add(roomId);
+                roomTypeAllocations
+                        .computeIfAbsent(roomType, k -> new HashSet<>())
+                        .add(roomId);
+                inventory.decrementRoom(roomType);
+                System.out.println("Reservation Confirmed!");
+                System.out.println("Guest: " + reservation.getGuestName());
+                System.out.println("Room ID: " + roomId);
+                System.out.println();
+            } catch (InvalidBookingException e) {
+                System.out.println("Booking Failed: " + e.getMessage());
+                System.out.println("Request skipped.\n");
             }
-
-            String roomId = generateRoomId(roomType);
-
-            allocatedRoomIds.add(roomId);
-
-            roomTypeAllocations
-                    .computeIfAbsent(roomType, k -> new HashSet<>())
-                    .add(roomId);
-
-            inventory.decrementRoom(roomType);
-
-            System.out.println("Reservation Confirmed!");
-            System.out.println("Guest: " + reservation.getGuestName());
-            System.out.println("Room ID: " + roomId);
-            System.out.println();
         }
     }
 }
@@ -353,6 +354,29 @@ class BookingReportService {
         System.out.println("Total Bookings: " + bookings.size());
     }
 }
+class InvalidBookingValidator {
+
+    public static void validateReservation(Reservation reservation, RoomInventory inventory)
+            throws InvalidBookingException {
+
+        String roomType = reservation.getRoomType();
+
+        if (!roomType.equals("Single Room") &&
+                !roomType.equals("Double Room") &&
+                !roomType.equals("Suite Room")) {
+
+            throw new InvalidBookingException("Invalid room type: " + roomType);
+        }
+
+        if (inventory.getAvailability(roomType) <= 0) {
+            throw new InvalidBookingException("No rooms available for " + roomType);
+        }
+
+        if (reservation.getGuestName() == null || reservation.getGuestName().trim().isEmpty()) {
+            throw new InvalidBookingException("Guest name cannot be empty");
+        }
+    }
+}
 public class Bookmystayapp {
 
     public static void main(String[] args) {
@@ -450,6 +474,11 @@ public class Bookmystayapp {
         BookingReportService reportService = new BookingReportService();
 
         reportService.generateReport(history.getBookings());
+        reportService.generateReport(history.getBookings());
+        Reservation r4 = new Reservation("", "Luxury Room");
+        bookingQueue.addRequest(r4);
+        System.out.println("\nProcessing Invalid Booking Test:");
+        allocator.processBookings(bookingQueue);
         System.out.println("Application executed successfully.");
     }
 }
