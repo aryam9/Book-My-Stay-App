@@ -3,7 +3,8 @@ import java.util.Queue;
 import java.util.LinkedList;
 import java.util.Set;
 import java.util.HashSet;
-
+import java.util.List;
+import java.util.ArrayList;
 class Reservation {
 
     private String guestName;
@@ -222,6 +223,76 @@ class RoomAllocationService {
         }
     }
 }
+class AddOnService {
+
+    private String serviceName;
+    private double price;
+
+    public AddOnService(String serviceName, double price) {
+        this.serviceName = serviceName;
+        this.price = price;
+    }
+
+    public String getServiceName() {
+        return serviceName;
+    }
+
+    public double getPrice() {
+        return price;
+    }
+
+    public void displayService() {
+        System.out.println(serviceName + " - ₹" + price);
+    }
+}
+class AddOnServiceManager {
+
+    private HashMap<String, List<AddOnService>> reservationServices;
+
+    public AddOnServiceManager() {
+        reservationServices = new HashMap<>();
+    }
+
+    public void addService(String reservationId, AddOnService service) {
+
+        reservationServices
+                .computeIfAbsent(reservationId, k -> new ArrayList<>())
+                .add(service);
+
+        System.out.println(service.getServiceName() + " added to reservation " + reservationId);
+    }
+
+    public double calculateTotalServiceCost(String reservationId) {
+
+        double total = 0;
+
+        List<AddOnService> services = reservationServices.get(reservationId);
+
+        if (services != null) {
+            for (AddOnService s : services) {
+                total += s.getPrice();
+            }
+        }
+
+        return total;
+    }
+
+    public void displayServices(String reservationId) {
+
+        System.out.println("\nServices for Reservation " + reservationId);
+
+        List<AddOnService> services = reservationServices.get(reservationId);
+
+        if (services == null) {
+            System.out.println("No services selected.");
+            return;
+        }
+
+        for (AddOnService s : services) {
+            s.displayService();
+        }
+    }
+}
 public class Bookmystayapp {
 
     public static void main(String[] args) {
@@ -291,6 +362,23 @@ public class Bookmystayapp {
         bookingQueue.displayQueue();
         RoomAllocationService allocator = new RoomAllocationService(inventory);
         allocator.processBookings(bookingQueue);
+        AddOnServiceManager serviceManager = new AddOnServiceManager();
+
+        AddOnService breakfast = new AddOnService("Breakfast", 500);
+        AddOnService airportPickup = new AddOnService("Airport Pickup", 1200);
+        AddOnService spa = new AddOnService("Spa Access", 2000);
+
+        String reservationId = "SR101";
+
+        serviceManager.addService(reservationId, breakfast);
+        serviceManager.addService(reservationId, airportPickup);
+        serviceManager.addService(reservationId, spa);
+
+        serviceManager.displayServices(reservationId);
+
+        double totalServiceCost = serviceManager.calculateTotalServiceCost(reservationId);
+
+        System.out.println("Total Add-On Cost: ₹" + totalServiceCost);
         System.out.println("Application executed successfully.");
     }
 }
