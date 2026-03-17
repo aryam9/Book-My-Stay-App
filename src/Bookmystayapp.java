@@ -8,6 +8,56 @@ import java.util.ArrayList;
 import java.util.Stack;
 import java.util.*;
 import java.util.concurrent.locks.*;
+import java.io.*;
+import java.util.*;
+
+class PersistenceService {
+
+    private static final String FILE_NAME = "hotel_state.ser";
+
+    public static void saveState(RoomInventory inventory, BookingHistory history, RoomAllocationService allocator) {
+        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(FILE_NAME))) {
+            out.writeObject(inventory);
+            out.writeObject(history);
+            out.writeObject(allocator.getAllocatedRoomIds());
+            System.out.println("\nSystem state saved successfully.");
+        } catch (IOException e) {
+            System.out.println("Error saving system state: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static boolean loadState(RoomInventory inventory, BookingHistory history, RoomAllocationService allocator) {
+        File file = new File(FILE_NAME);
+        if (!file.exists()) {
+            System.out.println("No saved system state found. Starting fresh.");
+            return false;
+        }
+
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(FILE_NAME))) {
+            RoomInventory savedInventory = (RoomInventory) in.readObject();
+            BookingHistory savedHistory = (BookingHistory) in.readObject();
+            Set<String> savedAllocatedRooms = (Set<String>) in.readObject();
+
+            for (String roomType : savedInventory.getInventoryMap().keySet()) {
+                inventory.updateAvailability(roomType, savedInventory.getAvailability(roomType));
+            }
+
+            for (Reservation r : savedHistory.getBookings()) {
+                history.addBooking(r);
+            }
+
+            allocator.getAllocatedRoomIds().clear();
+            allocator.getAllocatedRoomIds().addAll(savedAllocatedRooms);
+
+            System.out.println("System state restored successfully.");
+            return true;
+        } catch (IOException | ClassNotFoundException e) {
+            System.out.println("Error loading system state: " + e.getMessage());
+            return false;
+        }
+    }
+}
 class InvalidBookingException extends Exception {
 
     public InvalidBookingException(String message) {
@@ -61,8 +111,8 @@ class CancellationService {
         }
     }
 }
-class Reservation {
-
+class Reservation implements Serializable  {
+    private static final long serialVersionUID = 1L;
     private String guestName;
     private String roomType;
 
@@ -160,17 +210,27 @@ class SuiteRoom extends Room {
     }
 }
 
-class RoomInventory {
-
+class RoomInventory implements Serializable {
+    private static final long serialVersionUID = 1L;
     private HashMap<String, Integer> inventory;
-
+    public void displayInventory() {
+        System.out.println("\n=== Current Room Inventory ===");
+        for (String roomType : inventory.keySet()) {
+            System.out.println(roomType + ": " + inventory.get(roomType) + " available");
+        }
+    }
     public RoomInventory() {
         inventory = new HashMap<>();
         inventory.put("Single Room", 10);
         inventory.put("Double Room", 6);
         inventory.put("Suite Room", 3);
     }
-
+    public void decrementRoom(String roomType) {
+        int current = inventory.getOrDefault(roomType, 0);
+        if (current > 0) {
+            inventory.put(roomType, current - 1);
+        }
+    }
     public int getAvailability(String roomType) {
         return inventory.getOrDefault(roomType, 0);
     }
@@ -179,18 +239,10 @@ class RoomInventory {
         inventory.put(roomType, count);
     }
 
-    public void displayInventory() {
-        System.out.println("Current Room Inventory:");
-        for (String roomType : inventory.keySet()) {
-            System.out.println(roomType + " : " + inventory.get(roomType));
-        }
-    }
-    public void decrementRoom(String roomType) {
-        int available = inventory.get(roomType);
-        inventory.put(roomType, available - 1);
+    public HashMap<String, Integer> getInventoryMap() {
+        return inventory;
     }
 }
-
 class RoomSearchService {
 
     private RoomInventory inventory;
@@ -347,8 +399,8 @@ class AddOnServiceManager {
         }
     }
 }
-class BookingHistory {
-
+class BookingHistory  implements Serializable{
+    private static final long serialVersionUID = 1L;
     private List<Reservation> confirmedBookings;
 
     public BookingHistory() {
@@ -505,9 +557,12 @@ public class Bookmystayapp {
         System.out.println("=====================================");
 
         RoomInventory inventory = new RoomInventory();
+        BookingHistory history = new BookingHistory();
+        RoomAllocationService allocator = new RoomAllocationService(inventory);
+
+        PersistenceService.loadState(inventory, history, allocator);
 
         inventory.displayInventory();
-
         Room[] rooms = {new SingleRoom(), new DoubleRoom(), new SuiteRoom()};
         RoomSearchService searchService = new RoomSearchService(inventory);
         searchService.searchRooms(rooms);
@@ -520,8 +575,6 @@ public class Bookmystayapp {
         bookingQueue.addRequest(r1);
         bookingQueue.addRequest(r2);
         bookingQueue.addRequest(r3);
-
-        RoomAllocationService allocator = new RoomAllocationService(inventory);
         allocator.processBookings(bookingQueue);
 
         AddOnServiceManager serviceManager = new AddOnServiceManager();
@@ -531,7 +584,6 @@ public class Bookmystayapp {
         serviceManager.addService(reservationId, new AddOnService("Spa Access", 2000));
         serviceManager.displayServices(reservationId);
 
-        BookingHistory history = new BookingHistory();
         history.addBooking(r1);
         history.addBooking(r2);
         history.addBooking(r3);
@@ -546,8 +598,10 @@ public class Bookmystayapp {
 
         CancellationService cancellationService =
                 new CancellationService(inventory, allocator.getAllocatedRoomIds());
-        String cancelRoomId = allocator.getAllocatedRoomIds().iterator().next();
-        cancellationService.cancelBooking(cancelRoomId, "Single Room");
+        if (!allocator.getAllocatedRoomIds().isEmpty()) {
+            String cancelRoomId = allocator.getAllocatedRoomIds().iterator().next();
+            cancellationService.cancelBooking(cancelRoomId, "Single Room");
+        }
         cancellationService.displayRollbackHistory();
         inventory.displayInventory();
 
@@ -585,6 +639,8 @@ public class Bookmystayapp {
         System.out.println("Final Inventory:");
         inventory.displayInventory();
         System.out.println("Allocated Rooms: " + threadSafeAllocator.getAllocatedRoomIds().size());
+
+        PersistenceService.saveState(inventory, history, allocator);
 
         System.out.println("\nApplication executed successfully.");
     }
